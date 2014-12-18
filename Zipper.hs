@@ -8,6 +8,7 @@ module Zipper
 -- | Podatkovni tip s katerim predstavimo drevo.
 -- | Lahko ima vrednost Item ali Section.
 -- | Item je tipa String, Section pa je seznam vrednosti tipa Tree.
+-- Načeloma bi lahko konstruktor Item vzel poljuben tip (Int, Bool, ...)
 data Tree = Item String | Section [Tree] deriving (Show)
 
 -- | Podatkovni tip s katerim predstavimo pot do poddrevesa.
@@ -68,9 +69,9 @@ nth_son loc n = nth n
 						else error "Drugi argument mora biti naravno število!" 
 -}		
 
----------------------------------------------------------
+---------------------------------------------------------------------
 -- SPREMEMBE, VSTAVLJANJE IN IZBRIS ELEMENTOV(PODDREVES) V DREVESU --
----------------------------------------------------------
+---------------------------------------------------------------------
 
 -- | Celotno poddrevo na trenutni lokaciji nadomesti z nekim novim poddrevesom.
 change :: Location -> Tree -> Location
@@ -91,55 +92,35 @@ insert_down :: Location -> Tree -> Location
 insert_down (Item _, _) t1 = error "Nižje od lista ne moreš vstavljati!"
 insert_down (Section sons, p) t1 = (t1, Node [] p sons) -: go_up
 
--- | Izbriše poddrevo v katerem se nahajamo, ter se premakne : v desno, če ima poddrevo desne sosede, levo če nima desnih pa ima leve sosede ali gor če nima sosedov
+-- | Izbriše poddrevo v katerem se nahajamo, ter se premakne: 
+-- | *v desno, če ima poddrevo desne sosede,
+-- | *levo če nima desnih pa ima leve sosede ali 
+-- | *gor če nima sosedov.
 delete :: Location -> Location
 delete (_, Top) = error "Nahajaš se na vrhu!"
 delete (_, Node left up (r:right)) = (r, Node left up right)
 delete (_, Node (l:left) up []) = (l, Node left up [])
 delete (_, Node [] up []) = (Section [], up)
 
+-----------
+-- SCARS --
+-----------
 
 
+-- | Implementiramo novo drevo, ki sedaj hrani tudi t.i. drobtinice, ki nam povedo, kako priti .
+-- | Lahko ima vrednost Item ali Siblings.
+-- | Item je tipa String, Siblings pa je trojka seznam Memo dreves * Memo drevo * seznam Memo dreves.
+data Memo_Tree = Memo_Item String | Siblings [Memo_Tree] Memo_Tree [Memo_Tree] deriving (Show)
 
-{- 
-Primeri za testiranje.
+-- | Podatkovni tip s katerim predstavimo pot do poddrevesa.
+-- | Lahko ima vrednost Top, kar pomeni, da je poddrevo kar koren drevesa.
+-- | Lahko ima vrednost Node, ki je tipa trojica. 
+-- | Trojica vsebuje podatke o levih sosedih (začenjajši z najbližjim), poti do očeta ter desnih sosedih (začenjajši prav tako z najbližjim). 
+data Memo_Path  = Memo_Top | Memo_Node [Memo_Tree] Memo_Path [Memo_Tree] deriving (Show)
 
-let poddrevo = Item "f"
-let pot = Node [Item "f"] Top [Item "g"]
+-- |Sinonim za dvojico podatkovnih tipov Tree in Path, ki predstavlja neko poddrevo, ter pot do njega.
+type Memo_Location = (Memo_Tree, Memo_Path) 
 
-go_left (poddrevo, pot)
->> (Item "f", Node [] Top [Item "f", Item "g"])
-
-Dela pravilno. V našem preprostem drevesu smo se pomaknili levo in sedaj na levi nimamo več sosedov, 
-pot do očeta je še zmeraj ista, na desni pa je sedaj poleg "g" še element "f" iz katerega smo štartali.
- 
-go_left $ go_left (poddrevo, pot)
-*** Exception: Ni levih sosedov!
-
-go_left (poddrevo, Top)
-*** Exception: Koren nima sosedov!
--}
-
-{- 
-Primer daljšega drevesa in poti ter funkcij kako priti v Item "Haskell".
-let poddrevo = Section[Item "f", Item "z", Section[Item "R", Item "Haskell"]]
-let pot = Node [Item "a", Section[Item "g"]] Top [Item "b", Section[Item "g"], Item "c"]
-let lokacija = (poddrevo, pot)
-
-go_right $ go_down $ go_right $ go_right $ go_down (lokacija)
-
-Še z operatorjem -:
-
-lokacija -: go_down -: go_right -: go_right -: go_down -: go_right
-
-Testiranje funkcije change in insert_
-change lokacija (Section[Item "fgh", Item "kzh", Section[Item "Z", Item "Rok"]])
-insert_right lokacija (Section[Item "fgh", Item "kzh", Section[Item "Z", Item "Rok"]])
-insert_left lokacija (Section[Item "fgh", Item "kzh", Section[Item "Z", Item "Rok"]])
-insert_down lokacija (Section[Item "fgh", Item "kzh", Section[Item "Z", Item "Rok"]])
-delete lokacija
-
--}
 
 
 
