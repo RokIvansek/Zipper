@@ -77,7 +77,7 @@ nth_son loc n = nth n
 change :: Location -> Tree -> Location
 change (_, p) t = (t, p)
 
--- | Vstavi podano podrevo desno od poddrevesa na trenutni lokaciji.
+-- | Vstavi podano podrevo desno od poddrevesa na trenutni lokaciji. Fokus ostane isti.
 insert_right :: Location -> Tree -> Location
 insert_right (t, Top) r = error "Nahajaš se na vrhu!"
 insert_right (t, Node left up right) r = (t, Node left up (r:right))
@@ -106,9 +106,9 @@ delete (_, Node [] up []) = (Section [], up)
 -- SCARS --
 -----------
 
-
--- | Implementiramo novo drevo, ki sedaj hrani tudi t.i. drobtinice, ki nam povedo, kako priti .
--- | Lahko ima vrednost Item ali Siblings.
+-- | Implementiramo novo drevo, ki podatke hrani na malo drugačen način.
+-- | Lahko ima vrednost Item ali Siblings. V Siblings je prvi seznam, seznam levih sosedov elementa
+-- | Memo_tree, drugi seznam pa seznam desnih sosedov.
 -- | Item je tipa String, Siblings pa je trojka seznam Memo dreves * Memo drevo * seznam Memo dreves.
 data Memo_Tree = Memo_Item String | Siblings [Memo_Tree] Memo_Tree [Memo_Tree] deriving (Show)
 
@@ -118,12 +118,49 @@ data Memo_Tree = Memo_Item String | Siblings [Memo_Tree] Memo_Tree [Memo_Tree] d
 -- | Trojica vsebuje podatke o levih sosedih (začenjajši z najbližjim), poti do očeta ter desnih sosedih (začenjajši prav tako z najbližjim). 
 data Memo_Path  = Memo_Top | Memo_Node [Memo_Tree] Memo_Path [Memo_Tree] deriving (Show)
 
--- |Sinonim za dvojico podatkovnih tipov Tree in Path, ki predstavlja neko poddrevo, ter pot do njega.
+-- |Sinonim za dvojico podatkovnih tipov Tree in Path, ki predstavlja neko poddrevo, ter pot do njega (njegov Zipper).
 type Memo_Location = (Memo_Tree, Memo_Path) 
 
+-- | Funkcije za premik navzgor in navzdol so sedaj enostavnejše.
 
+-- | Premik navzgor.
+go_up_memo :: Memo_Location -> Memo_Location
+go_up_memo (_, Memo_Top) = error "Visje od korena ne gre!"
+go_up_memo (t, Memo_Node left p' right) = (Siblings left t right, p')
 
+-- | Premik navzdol (skrajno levo).
+go_down_memo :: Memo_Location -> Memo_Location
+go_down_memo (Memo_Item _, _) = error "Nižje od lista ne moreš!"
+go_down_memo (Siblings left t' right, p) = (t', Memo_Node left p right)
 
+---------------------
+-- BINARNA DREVESA --
+---------------------
+
+-- Binarno drevo
+data Binary_Tree = Nil | Cons Binary_Tree Binary_Tree
+
+-- Pripadajoči zipper. 
+-- Pove korak (Left ali Right) in katero je drevo, ki vanj nismo šli
+data Binary_Path = Binary_Top | L Binary_Path Binary_Tree | R Binary_Tree Binary_Path
+
+-- Lokacija. Drevo, na katerega se fokusiramo in njegov zipper
+type Binary_Location = (Binary_Tree, Binary_Path)
+
+-- Funkcije
+
+change_binary :: Binary_Location -> Binary_Tree -> Binary_Location
+change_binary (_, p) t = (t, p)
+
+go_left_binary :: Binary_Location -> Binary_Location
+go_left_binary (_, Binary_Top) = error "Koren je en sam, Oče vseh!"
+go_left_binary (t, L father right) = error "Si že v levem kraku"
+go_left_binary (t, R left father) = (left, L father t)
+
+go_up_binary :: Binary_Location -> Binary_Location
+go_up_binary (_, Binary_Top) = error "Višje od očeta vseh ne moreš. On je najvišji."
+go_up_binary (t, L father right) = (Cons t right, father)
+go_up_binary (t, R left father) = (Cons left t, father)
 
 
 
