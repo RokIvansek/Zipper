@@ -1,12 +1,52 @@
--- Podatkovni tip, ki opisuje tipe, za katere znamo izračunati zipper
+module Auto
+	where
 
-data Ty sigma = Basic sigma
-              | Zero
-              | One
-              | Sum (Ty sigma) (Ty sigma)
-              | Product (Ty sigma) (Ty sigma)
-              | Fix sigma (Ty sigma)
-                deriving (Show, Eq)
+import Data.List
+import Data.Maybe
+
+--Sequences  of Distinct Names
+type Name = String
+type NmSeq = [String] --zakaj jih sploh rabi več? 
+--A imamo lahko izraz Basic X, kjer je X = Sum (Basic Y) (Basic Y), kjer je Y = Zero
+--A je to zato mišljeno?
+
+concatenation :: Name -> NmSeq -> NmSeq
+concatenation x sigma = sigma ++ [x]
+
+restriction :: Name -> NmSeq -> NmSeq
+restriction x sigma = if index == Nothing then sigma else take (fromJust $ index) sigma
+						where index = elemIndex x sigma
+
+--Desribing the Regular Types
+--Kako tu notri spravimo omejitev da je sigma tipa NmSeq oz Name oz. ali je to sploh treba?
+
+data Reg sigma = Basic sigma
+	            | Zero
+	            | One
+	            | Sum (Reg sigma) (Reg sigma)
+	            | Product (Reg sigma) (Reg sigma)
+	            | Fix sigma (Reg sigma)
+	            deriving (Show, Eq)
+
+--Še weakening in definition je potrebno definirat
+
+--Type enviroments
+--Za vsak element sigme :: NmSeq, pove kakšnega tipa je
+
+type Env = [(Name, Reg NmSeq)]
+
+--restriction?
+
+--projection dobi ime x in okolje gamma in vrne regularni izraz ki ga x-u določa okolje gamma
+projection :: Name -> Env -> Reg
+
+--Interpreting the Descriptions
+
+data Term = Unit
+			|Inl Term
+			|Inr Term
+			|Pair Term Term
+			|Con Term
 
 -- Primeri:
 
@@ -37,10 +77,11 @@ list a = Fix "X" (Sum One (Product a (Basic "X")))
 tree = Fix "Y" (Sum One (Fix "X" (Sum One (Product (Basic "Y") (Basic "X")))))
 
 -- za dani tip izračunaj tip poti
-path :: Ty sigma -> Ty sigma
-path (Basic _) = One
-path Zero = One
-path One = One
-path (Sum t1 t2) = Sum (path t1) (path t2)
-path (Product t1 t2) = Sum (Product (path t1) t2) (Product t1 (path t2))
-path (Fix x f) = undefined
+derive :: Name -> Reg sigma -> Reg sigma
+derive x (Basic [x]) = One
+derive x (Basic [y]) = Zero
+derive x (Zero) = Zero
+derive x (Sum t1 t2) = Sum (derive x t1) (derive x t2)
+derive x One = Zero
+derive x (Product t1 t2) = Sum (Product (derive x t1) t2) (Product t1 (derive x t2))
+derive x (Fix y (Reg y)) = undefined
