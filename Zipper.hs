@@ -153,14 +153,31 @@ change_binary :: Binary_Location -> Binary_Tree -> Binary_Location
 change_binary (_, p) t = (t, p)
 
 go_left_binary :: Binary_Location -> Binary_Location
-go_left_binary (_, Binary_Top) = error "Koren je en sam, Oče vseh!"
+go_left_binary (_, Binary_Top) = error "Koren je en sam, nima sosedov!"
 go_left_binary (t, L father right) = error "Si že v levem kraku"
 go_left_binary (t, R left father) = (left, L father t)
+
+go_right_binary :: Binary_Location -> Binary_Location
+go_right_binary (_, Binary_Top) = error "Koren je en sam, nima sosedov!"
+go_right_binary (t, L father right) = (right, R father t)
+go_right_binary (t, R left father) = error "Si že v desnem kraku"
 
 go_up_binary :: Binary_Location -> Binary_Location
 go_up_binary (_, Binary_Top) = error "Višje od očeta vseh ne moreš. On je najvišji."
 go_up_binary (t, L father right) = (Cons t right, father)
 go_up_binary (t, R left father) = (Cons left t, father)
+
+--Za pomik navzdol
+
+--V levi krak
+go_first_binary :: Binary_Location -> Binary_Location
+go_first_binary (Nil, _) = error "Si v listu, nižje ne gre"
+go_first_binary (Cons l r, p) = (l, L p r) 
+
+--V desni krak
+go_second_binary :: Binary_Location -> Binary_Location
+go_second_binary (Nil, _) = error "Si v listu, nižje ne gre"
+go_second_binary (Cons l r, p) = (r, R p l) 
 
 
 

@@ -30,12 +30,20 @@ data Reg sigma = Basic sigma
 
 --Še weakening in definition je potrebno definirat
 
+--a sta lahko kar funkciji? Samo potem rabimo še pripadajoče NmSeq...
+definition :: Name -> Reg sigma -> Reg sigma -> Reg sigma
+
+
 --Type enviroments
 --Za vsak element sigme :: NmSeq, pove kakšnega tipa je
 
 type Env = [(Name, Reg NmSeq)]
 
---restriction?
+--restriction' dela podobno kot prvi restriction. Vrne seznam Env vseh elementov pred podanim imenom
+restriction' :: Name -> Env -> Env
+
+--concatenation' doda nov element v seznam Env
+concatenation' :: (Name, Reg NmSeq) -> Env -> Env
 
 --projection dobi ime x in okolje gamma in vrne regularni izraz ki ga x-u določa okolje gamma
 projection :: Name -> Env -> Reg
