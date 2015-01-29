@@ -137,9 +137,9 @@ substitute x t1 t2 = case t1 of
 	One -> One
 	Sum t1' t2' -> Sum (substitute x t1' t2) (substitute x t2' t2)
 	Product t1' t2' -> Product (substitute x t1' t2) (substitute x t2' t2)
-	Fix y t | (elem y (names t2 [])) -> (substitute x (Fix a (zamenjajSprem y a t)) t2)
+	Fix y t | (elem y (names t2 [])) -> (substitute x (Fix a (zamenjajSprem y a t)) t2) -- primer z lista ko moramo dati vezani spremenljivki novo ime zato da ne pomešamo spremenljivk
 		where a = fresh ((names t2 []) ++ (names t []))
-	Fix y t | x == y -> (substitute x t t2)  -- a je to ok? Če želimo v izrazu fix y t vse pojavitve y-a nadomestit z t2, fix izgine...tko kot substitucija v lambda računu
+	--Fix y t | x == y -> (substitute x t t2)  -- a je to ok? Če želimo v izrazu fix y t vse pojavitve y-a nadomestit z t2, fix izgine...tko kot substitucija v lambda računu
 	Fix y t -> Fix y (substitute x t t2)
 	Subst y t1' t2' -> (substitute x (substitute y t1' t2') t2)
 	Weaken y t -> Weaken y (substitute x t t2)
