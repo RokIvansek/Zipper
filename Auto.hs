@@ -107,6 +107,64 @@ derive x (Subst y f s) = Sum (Subst y (derive x f) s) (Product (Subst y (derive 
 derive x (Weaken y t) | x == y = Zero
 derive x (Weaken y t) | x /= y = Weaken y (derive x t)
 
--- testni Primeri, ki kažejo, da je simplyfy nujen
+-- testni primeri
 -- derive "Y" tree
 -- derive "X" btree
+
+--Pomožna funkcija, ki v nekem izrazu vse pojavitve spremenljivke a zamenja z b
+zamenjajSprem :: Name -> Name -> Reg -> Reg
+zamenjajSprem a b t = case t of
+	Basic x | x == a -> Basic b
+	Basic x | x /= a -> Basic x
+	Zero -> Zero
+	One -> One
+	Sum t1 t2 -> Sum (zamenjajSprem a b t1) (zamenjajSprem a b t2)
+	Product t1 t2 -> Product (zamenjajSprem a b t1) (zamenjajSprem a b t2)
+	Fix x t1 | x == a -> Fix b (zamenjajSprem a b t1)
+	Fix x t1 | x /= a -> Fix x (zamenjajSprem a b t1)
+	Subst x t1 t2 | x == a -> Subst b (zamenjajSprem a b t1) (zamenjajSprem a b t2)
+	Subst x t1 t2 | x /= a -> Subst x (zamenjajSprem a b t1) (zamenjajSprem a b t2)
+	Weaken x t1 | x == a -> Weaken b (zamenjajSprem a b t1)
+	Weaken x t1 | x /= a -> Weaken x (zamenjajSprem a b t1)  
+
+--Pomožna funkcija substitute, ki izvede dejansko substitucijo v izrazu Subst
+--Uporabili jo bomo v simplify. Poenostavljeni zapisi sploh ne bodo imeli Subst izrazov.
+substitute :: Name -> Reg -> Reg -> Reg
+substitute x t1 t2 = case t1 of
+	Basic y | x == y -> t2
+	Basic y | x /= y -> Basic y
+	Zero -> Zero
+	One -> One
+	Sum t1' t2' -> Sum (substitute x t1' t2) (substitute x t2' t2)
+	Product t1' t2' -> Product (substitute x t1' t2) (substitute x t2' t2)
+	Fix y t | (elem y (names t2 [])) -> (substitute x (Fix a (zamenjajSprem y a t)) t2)
+		where a = fresh ((names t2 []) ++ (names t []))
+	Fix y t | x == y -> (substitute x t t2)  -- a je to ok? Če želimo v izrazu fix y t vse pojavitve y-a nadomestit z t2, fix izgine...tko kot substitucija v lambda računu
+	Fix y t -> Fix y (substitute x t t2)
+	Subst y t1' t2' -> (substitute x (substitute y t1' t2') t2)
+	Weaken y t -> Weaken y (substitute x t t2)
+
+simplify :: Reg -> Reg
+simplify t = case t of
+	Basic x -> Basic x
+	Zero -> Zero
+	One -> One
+	Sum t1 t2 -> case (simplify t1, simplify t2) of
+		(Zero, _) -> simplify t2
+		(_, Zero) -> simplify t1
+		otherwise -> Sum (simplify t1) (simplify t2)
+	Product t1 t2 -> case (simplify t1, simplify t2) of
+		(Zero, _) -> Zero
+		(_, Zero) -> Zero
+		(One, _)  -> simplify t2
+		(_, One)  -> simplify t1
+		otherwise -> Product (simplify t1) (simplify t2)
+	Fix x t1 -> case simplify t1 of
+		Zero -> Zero
+		One -> One
+		otherwise -> Fix x (simplify t1)
+	Subst x t1 t2 | elem x (names t1 []) -> substitute x (simplify t1) (simplify t2)
+	Subst x t1 t2 						 -> (simplify t1) -- ta primer zajame ničle in enke
+	Weaken x t1 -> Weaken x (simplify t1)
+
+--simplify' :: Reg -> (Reg, (Term -> Term), (Term -> Term))
