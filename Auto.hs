@@ -1,6 +1,14 @@
 module Auto
 	where
 
+-- IDEJE:
+-- 1. Weaken je samo za birokracijo (katere spremenljivke so veljavne) in ga pobrišemo
+-- 2. Subst pobrišemo iz tipa in njegovo uporabo v derive od Fix nadomestimo s substitute
+-- 3. Do konca napiši simplify' (ko dela, lahko simplify pobrišeš)
+-- 4. Testi, da simplify' pravilno deluje:
+--    * pravilno poenostavlja tipe
+--    * pravilno izračuna izomorfizme (preizkusimo na primerih)
+
 import Data.List
 import Data.Maybe
 --Sequences of Distinct Names
@@ -24,8 +32,6 @@ data Reg = Basic Name
 			| Sum Reg Reg
 			| Product Reg Reg
 			| Fix Name Reg
-			| Subst Name Reg Reg -- Subst x F S ... F|_x=S
-			| Weaken Name Reg -- Weaken x T .... T_x
 			deriving (Show, Eq)
 
 --a sta lahko kar funkciji? Samo potem rabimo še pripadajoče NmSeq...
@@ -48,6 +54,7 @@ data Term = Unit
 			|Inr Term
 			|Pair Term Term
 			|Con Term
+			deriving (Show, Eq)
 
 -- Primeri:
 -- Naravna števila
@@ -81,54 +88,44 @@ fresh xs = head $ (candidates \\ xs)
 
 -- seznam vseh imen (tudi vezanih s Fix), ki se pojavijo v danem tipu
 -- vedno ga pokličemo s praznim seznamom
-names :: Reg -> [Name] -> [Name]
-names t xs = case t of
-	Basic x -> x:xs
-	Zero -> xs
-	One -> xs
-	Sum t1 t2 -> names t1 [] ++ names t2 xs
-	Product t1 t2 -> names t1 [] ++ names t2 xs
-	Fix x t1 -> x:names t1 xs
-	Subst x t1 t2 -> names t1 [] ++ names t2 (x:xs)
-	Weaken x t1 -> names t1 (x:xs)
+names :: Reg -> [Name]
+names t = case t of
+	Basic x -> [x]
+	Zero -> []
+	One -> []
+	Sum t1 t2 -> names t1 ++ names t2
+	Product t1 t2 -> names t1 ++ names t2
+	Fix x t1 -> x:names t1
+	--Subst x t1 t2 -> x : names t1 ++ names t2
+	--Weaken x t1 -> x : names t1
 
 
 -- za dani tip izračunaj tip poti
-derive :: Name -> Reg -> Reg 
+derive :: Name -> Reg -> Reg
 derive x (Basic y) | x == y = One
 derive x (Basic y) | x /= y = Zero
 derive x Zero = Zero
 derive x (Sum t1 t2) = Sum (derive x t1) (derive x t2)
 derive x One = Zero
 derive x (Product t1 t2) = Sum (Product (derive x t1) t2) (Product t1 (derive x t2))
-derive x (Fix y f) = Fix z (Sum (Weaken z (Subst y (derive x f) (Fix y f))) (Product (Weaken z (Subst y (derive y f) (Fix y f))) (Basic z)))
-	where z = fresh (names f [])  -- z je ena čist nova spremenljivka
-derive x (Subst y f s) = Sum (Subst y (derive x f) s) (Product (Subst y (derive y f) s) (derive x s))
-derive x (Weaken y t) | x == y = Zero
-derive x (Weaken y t) | x /= y = Weaken y (derive x t)
+derive x (Fix y f) = Fix z (Sum (substitute y (derive x f) (Fix y f)) (Product (substitute y (derive y f) (Fix y f)) (Basic z)))
+	where z = fresh (y : names f)  -- z je ena čist nova spremenljivka
+--derive x (Subst y f s) = Sum (Subst y (derive x f) s) (Product (Subst y (derive y f) s) (derive x s))
+--derive x (Weaken y t) | x == y = Zero
+--derive x (Weaken y t) | x /= y = Weaken y (derive x t)
 
 -- testni primeri
 -- derive "Y" tree
 -- derive "X" btree
 
---Pomožna funkcija, ki v nekem izrazu vse pojavitve spremenljivke a zamenja z b
+--Pomožna funkcija, ki v nekem izrazu t vse pojavitve spremenljivke a zamenja z b
 zamenjajSprem :: Name -> Name -> Reg -> Reg
-zamenjajSprem a b t = case t of
-	Basic x | x == a -> Basic b
-	Basic x | x /= a -> Basic x
-	Zero -> Zero
-	One -> One
-	Sum t1 t2 -> Sum (zamenjajSprem a b t1) (zamenjajSprem a b t2)
-	Product t1 t2 -> Product (zamenjajSprem a b t1) (zamenjajSprem a b t2)
-	Fix x t1 | x == a -> Fix b (zamenjajSprem a b t1)
-	Fix x t1 | x /= a -> Fix x (zamenjajSprem a b t1)
-	Subst x t1 t2 | x == a -> Subst b (zamenjajSprem a b t1) (zamenjajSprem a b t2)
-	Subst x t1 t2 | x /= a -> Subst x (zamenjajSprem a b t1) (zamenjajSprem a b t2)
-	Weaken x t1 | x == a -> Weaken b (zamenjajSprem a b t1)
-	Weaken x t1 | x /= a -> Weaken x (zamenjajSprem a b t1)  
+zamenjajSprem a b t = substitute a t (Basic b)
 
---Pomožna funkcija substitute, ki izvede dejansko substitucijo v izrazu Subst
---Uporabili jo bomo v simplify. Poenostavljeni zapisi sploh ne bodo imeli Subst izrazov.
+-- Pomožna funkcija substitute, ki izvede dejansko substitucijo v izrazu Subst
+-- Uporabili jo bomo v simplify. Poenostavljeni zapisi sploh ne bodo imeli Subst izrazov.
+-- V izrazu t1 zamenjaj vse *proste* pojavitve x z izrazom t2.
+-- Hkrati odpravimo vse notranje Subst (notranjih Subst (in Subst-ov na sploh) sedaj ni več ker smo Subst odstranili iz definicije tipov)
 substitute :: Name -> Reg -> Reg -> Reg
 substitute x t1 t2 = case t1 of
 	Basic y | x == y -> t2
@@ -137,12 +134,11 @@ substitute x t1 t2 = case t1 of
 	One -> One
 	Sum t1' t2' -> Sum (substitute x t1' t2) (substitute x t2' t2)
 	Product t1' t2' -> Product (substitute x t1' t2) (substitute x t2' t2)
-	Fix y t | (elem y (names t2 [])) -> (substitute x (Fix a (zamenjajSprem y a t)) t2) -- primer z lista ko moramo dati vezani spremenljivki novo ime zato da ne pomešamo spremenljivk
-		where a = fresh ((names t2 []) ++ (names t []))
-	--Fix y t | x == y -> (substitute x t t2)  -- a je to ok? Če želimo v izrazu fix y t vse pojavitve y-a nadomestit z t2, fix izgine...tko kot substitucija v lambda računu
+	Fix y t | (elem y (names t2)) -> (substitute x (Fix a (zamenjajSprem y a t)) t2) -- primer z lista ko moramo dati vezani spremenljivki novo ime zato da ne pomešamo spremenljivk
+		where a = fresh ((names t2) ++ (names t))
 	Fix y t -> Fix y (substitute x t t2)
-	Subst y t1' t2' -> (substitute x (substitute y t1' t2') t2)
-	Weaken y t -> Weaken y (substitute x t t2)
+	--Subst y t1' t2' -> (substitute x (substitute y t1' t2') t2)
+	--Weaken y t -> Weaken y (substitute x t t2) -- XXX je se vedno neodvisno od y (zakaj rabimo Weaken?)
 
 simplify :: Reg -> Reg
 simplify t = case t of
@@ -150,21 +146,99 @@ simplify t = case t of
 	Zero -> Zero
 	One -> One
 	Sum t1 t2 -> case (simplify t1, simplify t2) of
-		(Zero, _) -> simplify t2
-		(_, Zero) -> simplify t1
-		otherwise -> Sum (simplify t1) (simplify t2)
+		(Zero, t2') -> t2' -- XXX podobno popravi ostale primere
+		(t1', Zero) -> t1'
+		(t1', t2') -> Sum t1' t2'
 	Product t1 t2 -> case (simplify t1, simplify t2) of
 		(Zero, _) -> Zero
 		(_, Zero) -> Zero
-		(One, _)  -> simplify t2
-		(_, One)  -> simplify t1
+		(One, t2') -> t2'
+		(t1', One) -> t1'
 		otherwise -> Product (simplify t1) (simplify t2)
 	Fix x t1 -> case simplify t1 of
-		Zero -> Zero
-		One -> One
-		otherwise -> Fix x (simplify t1)
-	Subst x t1 t2 | elem x (names t1 []) -> substitute x (simplify t1) (simplify t2)
-	Subst x t1 t2 						 -> (simplify t1) -- ta primer zajame ničle in enke
-	Weaken x t1 -> Weaken x (simplify t1)
+		t1' | elem x (names t1') -> Fix x t1'
+		t1' | otherwise -> t1'
+	--Subst x t1 t2 -> simplify (substitute x (simplify t1) (simplify t2))
+	--Weaken x t1 -> Weaken x (simplify t1)
 
---simplify' :: Reg -> (Reg, (Term -> Term), (Term -> Term))
+
+
+impossible :: Term -> Term
+impossible _ = error "This cannot happen"
+
+simplify' :: Reg -> (Reg, Term -> Term, Term -> Term)
+simplify' t = case t of
+	Basic x -> (Basic x, id, id)
+	Zero -> (Zero, id, id)
+	One -> (One, id, id)
+	Sum t1 t2 -> let
+					((t1', f1, g1), (t2', f2, g2)) = (simplify' t1, simplify' t2)
+				 in 
+				 	case (t1', t2') of
+						(Zero, t2') -> (t2', unInr, \y -> Inr (g2 y)) -- XXX podobno popravi ostale primere -- Zakaj v Inr ni treba povedat tud levga elementa? S preslikavo Inr (g2 y) nismo povedal dovolj. Povedal smo samo da vstavljamo na desno stran. Ne vemo pa da je levi element t1.
+						    where unInr u = case u of
+							    Inr x -> f2 x
+						(t1', Zero) -> (t1', unInl, \y -> Inl (g1 y))
+							where unInl u = case u of
+								Inl x -> f1 x
+						(t1', t2') -> (Sum t1' t2', h1, h2)
+							where 
+								h1 u = case u of
+									Inl x -> Inl (f1 x)
+									Inr x -> Inr (f2 x)
+								h2 u = case u of
+									Inl x -> Inl (g1 x)
+									Inr x -> Inr (g2 x)
+	Product t1 t2 -> let 
+						((t1', f1, g1), (t2', f2, g2)) = (simplify' t1, simplify' t2)
+	                 in 
+	                 	case (t1', t2') of
+							(Zero, _) -> (Zero, impossible, impossible)
+							(_, Zero) -> (Zero, impossible, impossible)
+							(One, _)  -> (t2', h1, (\y' -> Pair Unit (g2 y')))
+								where h1 u = case u of
+									Pair x y -> f2 y
+							(_, One)  -> (t1', h1, (\y' -> Pair (g1 y') Unit))
+								where h1 u = case u of
+									Pair x y -> f1 x
+							otherwise -> (Product t1' t2', h1, h2)
+								where
+									h1 u = case u of
+										Pair x y -> Pair (f1 x) (f2 y)
+									h2 u = case u of
+										Pair x y -> Pair (g1 x) (g2 y)
+	Fix x t -> let 
+				(t', f, g) = simplify' t
+               in
+               	if elem x (names t') then (Fix x t', h1, h2) else (t', h1', h2')
+               		where
+			    		h1 (Con y) = Con (f y) --tuki bi mogoče še enkrat rabu kratko razlago kaj točno Con dela. Con zapakira???
+	                	h2 (Con y) = Con (g y) --zakaj je tu parse error??!%##%#$!!"$#$"#$#"#
+         		       	h1' (Con y) = f y -- Nisem čist ziher če je to OK.
+                    	h2' y = Con (g y)                    
+
+{-
+-- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam
+-- elementov tipa (Basic x), spravljeno v asociativnem seznamu eta
+gen :: Reg -> [Term]
+gen _ Zero = []
+gen _ One = [Unit]
+
+gen eta (Sum t1 t2) = let l1 = gen eta t1
+                          l2 = gen eta t2
+                      in prepletemo (map Inl l1) (map Inr l2)
+
+gen eta (Product t1 t2) = let l1 = gen eta t1
+                              l2 = gen eta t2
+                          in Pair_vsak_z_vsakim l1 l2
+
+get eta (Fix x t) = s
+  where s0 = map Con $ generate ((x,[]) : eta) t
+        s = case s0 of
+        	    [] -> []
+        	    _ -> s0 ++ (map Con $ generate ((x,s) : eta) t)
+                   -- namesto ++ v prejsni vrtici uporabi "prepletemo"?
+                   -- pozor, prepletemo l1 l2 mora začeti z l1
+
+-- Primer praznega tipa: Fix "x" (Product (Basic "x") One)
+-}
