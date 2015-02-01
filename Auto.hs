@@ -161,8 +161,6 @@ simplify t = case t of
 	--Subst x t1 t2 -> simplify (substitute x (simplify t1) (simplify t2))
 	--Weaken x t1 -> Weaken x (simplify t1)
 
-
-
 impossible :: Term -> Term
 impossible _ = error "This cannot happen"
 
@@ -174,10 +172,10 @@ simplify' t = case t of
 	Sum t1 t2 -> let
 					((t1', f1, g1), (t2', f2, g2)) = (simplify' t1, simplify' t2)
 				 in 
-				 	case (t1', t2') of
+					case (t1', t2') of
 						(Zero, t2') -> (t2', unInr, \y -> Inr (g2 y)) -- XXX podobno popravi ostale primere -- Zakaj v Inr ni treba povedat tud levga elementa? S preslikavo Inr (g2 y) nismo povedal dovolj. Povedal smo samo da vstavljamo na desno stran. Ne vemo pa da je levi element t1.
-						    where unInr u = case u of
-							    Inr x -> f2 x
+							where unInr u = case u of
+								Inr x -> f2 x
 						(t1', Zero) -> (t1', unInl, \y -> Inl (g1 y))
 							where unInl u = case u of
 								Inl x -> f1 x
@@ -191,8 +189,8 @@ simplify' t = case t of
 									Inr x -> Inr (g2 x)
 	Product t1 t2 -> let 
 						((t1', f1, g1), (t2', f2, g2)) = (simplify' t1, simplify' t2)
-	                 in 
-	                 	case (t1', t2') of
+					 in 
+						case (t1', t2') of
 							(Zero, _) -> (Zero, impossible, impossible)
 							(_, Zero) -> (Zero, impossible, impossible)
 							(One, _)  -> (t2', h1, (\y' -> Pair Unit (g2 y')))
@@ -209,13 +207,16 @@ simplify' t = case t of
 										Pair x y -> Pair (g1 x) (g2 y)
 	Fix x t -> let 
 				(t', f, g) = simplify' t
-               in
-               	if elem x (names t') then (Fix x t', h1, h2) else (t', h1', h2')
-               		where
-			    		h1 (Con y) = Con (f y) --tuki bi mogoče še enkrat rabu kratko razlago kaj točno Con dela. Con zapakira???
-	                	h2 (Con y) = Con (g y) --zakaj je tu parse error??!%##%#$!!"$#$"#$#"#
-         		       	h1' (Con y) = f y -- Nisem čist ziher če je to OK.
-                    	h2' y = Con (g y)                    
+			   in
+				case t of
+					t1' | elem x (names t') -> (Fix x t1', h1, h2)
+						where
+							h1 (Con y) = Con (f y) --tuki bi mogoče še enkrat rabu kratko razlago kaj točno Con dela. Con zapakira???
+							h2 (Con y) = Con (g y) --zakaj je tu parse error??!%##%#$!!"$#$"#$#"#
+					t1' | otherwise -> (t1', h1, h2)
+						where
+							h1 (Con y) = f y -- Nisem čist ziher če je to OK.
+							h2 y = Con (g y)                    
 
 {-
 -- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam
@@ -225,20 +226,20 @@ gen _ Zero = []
 gen _ One = [Unit]
 
 gen eta (Sum t1 t2) = let l1 = gen eta t1
-                          l2 = gen eta t2
-                      in prepletemo (map Inl l1) (map Inr l2)
+						  l2 = gen eta t2
+					  in prepletemo (map Inl l1) (map Inr l2)
 
 gen eta (Product t1 t2) = let l1 = gen eta t1
-                              l2 = gen eta t2
-                          in Pair_vsak_z_vsakim l1 l2
+							  l2 = gen eta t2
+						  in Pair_vsak_z_vsakim l1 l2
 
 get eta (Fix x t) = s
   where s0 = map Con $ generate ((x,[]) : eta) t
-        s = case s0 of
-        	    [] -> []
-        	    _ -> s0 ++ (map Con $ generate ((x,s) : eta) t)
-                   -- namesto ++ v prejsni vrtici uporabi "prepletemo"?
-                   -- pozor, prepletemo l1 l2 mora začeti z l1
+		s = case s0 of
+				[] -> []
+				_ -> s0 ++ (map Con $ generate ((x,s) : eta) t)
+				   -- namesto ++ v prejsni vrtici uporabi "prepletemo"?
+				   -- pozor, prepletemo l1 l2 mora začeti z l1
 
 -- Primer praznega tipa: Fix "x" (Product (Basic "x") One)
 -}
