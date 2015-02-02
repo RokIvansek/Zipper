@@ -12,19 +12,24 @@ module Auto
 import Data.List
 import Data.Maybe
 --Sequences of Distinct Names
-type Name = String
-type NmSeq = [String] --zakaj jih sploh rabi več?
+type Name = String -- spremenljivka (x)
+type NmSeq = [Name] -- seznam spremenljivk (sigma)
 
+-- dodaj unikatno ime v seznam vseh unikatnih imen
 --A imamo lahko izraz Basic X, kjer je X = Sum (Basic Y) (Basic Y), kjer je Y = Zero
 --A je to zato mišljeno?
 concatenation :: Name -> NmSeq -> NmSeq
 concatenation x sigma = sigma ++ [x]
 
+-- The fromJust function extracts the element out of a Just and throws an error if its argument is Nothing. 
+-- The elemIndex function returns the index of the first element in the given list which is equal (by ==) to the query element, or Nothing if there is no such element.
+-- vzame zaporedje unikatnih imen iz celotnega zaporedja teh imen do izključujoč podanega
 restriction :: Name -> NmSeq -> NmSeq
 restriction x sigma = if index == Nothing then sigma else take (fromJust $ index) sigma
 	where index = elemIndex x sigma
 
 --Desribing the Regular Types
+-- opis regularnih tipov, kjer lahko posamezen vsebuje nadaljne reg. tipe in prosta imena
 --Kako tu notri spravimo omejitev da je sigma tipa NmSeq oz Name oz. ali je to sploh treba?
 data Reg = Basic Name
 			| Zero
@@ -154,7 +159,7 @@ simplify t = case t of
 		(_, Zero) -> Zero
 		(One, t2') -> t2'
 		(t1', One) -> t1'
-		otherwise -> Product (simplify t1) (simplify t2)
+		otherwise -> Product (simplify t1) (simplify t2) -- RAJE (t1', t2') -> Product t1' t2'
 	Fix x t1 -> case simplify t1 of
 		t1' | elem x (names t1') -> Fix x t1'
 		t1' | otherwise -> t1'
@@ -218,28 +223,33 @@ simplify' t = case t of
 							h1 (Con y) = f y -- Nisem čist ziher če je to OK.
 							h2 y = Con (g y)                    
 
-{-
+prepletemo :: [Term] -> [Term] -> [Term]
+prepletemo [] ys = ys
+prepletemo xs [] = xs
+prepletemo (x:xs) (y:ys) = x:y:prepletemo xs ys
+
+pair_vsak_z_vsakim :: [Term] -> [Term] -> [Term]
+pair_vsak_z_vsakim xs ys = [Pair x y | x <- xs, y <- ys]
+
 -- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam
 -- elementov tipa (Basic x), spravljeno v asociativnem seznamu eta
-gen :: Reg -> [Term]
+-- kličemo z eta = []
+gen :: [Term] -> Reg -> [Term]
 gen _ Zero = []
 gen _ One = [Unit]
 
 gen eta (Sum t1 t2) = let l1 = gen eta t1
-						  l2 = gen eta t2
+                          l2 = gen eta t2
 					  in prepletemo (map Inl l1) (map Inr l2)
 
 gen eta (Product t1 t2) = let l1 = gen eta t1
-							  l2 = gen eta t2
-						  in Pair_vsak_z_vsakim l1 l2
-
-get eta (Fix x t) = s
-  where s0 = map Con $ generate ((x,[]) : eta) t
-		s = case s0 of
-				[] -> []
-				_ -> s0 ++ (map Con $ generate ((x,s) : eta) t)
+                              l2 = gen eta t2
+						  in pair_vsak_z_vsakim l1 l2
+gen eta (Fix x t) = s
+    where s0 = map Con $ gen ((x,[]) : eta) t
+          s = case s0 of
+                  [] -> []
+                  _ -> prepletemo s0 (map Con $ gen ((x,s) : eta) t)
 				   -- namesto ++ v prejsni vrtici uporabi "prepletemo"?
 				   -- pozor, prepletemo l1 l2 mora začeti z l1
-
 -- Primer praznega tipa: Fix "x" (Product (Basic "x") One)
--}
