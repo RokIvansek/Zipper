@@ -1,4 +1,4 @@
-module Auto
+module Zippers
 	where
 
 -- IDEJE:
@@ -11,6 +11,7 @@ module Auto
 
 import Data.List
 import Data.Maybe
+
 --Sequences of Distinct Names
 type Name = String
 
@@ -205,21 +206,61 @@ test t1 t2 = let
 -- Vsi teli zgoraj so OK!
 
 
+----------------
+--FUNKCIJA GEN--
+----------------
+
+-- prepletemo par seznamov med seboj
 prepletemo :: [Term] -> [Term] -> [Term]
 prepletemo [] ys = ys
 prepletemo (x:xs) ys = x : (case ys of
-														 [] -> []
-														 y:ys' -> y : prepletemo xs ys')
+								 [] -> (x:xs)
+								 y:ys' -> y : prepletemo xs ys')
 
-pair_vsak_z_vsakim :: [Term] -> [Term] -> [Term]
-pair_vsak_z_vsakim xs ys = [Pair x y | x <- xs, y <- ys]
+-- stara funkcija za prepletanje vsakega z vsakim
+-- pair_vsak_z_vsakim :: [Term] -> [Term] -> [Term]
+-- pair_vsak_z_vsakim xs ys = [Pair x y | x <- xs, y <- ys]
 
--- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam
--- elementov tipa (Basic x), spravljeno v asociativnem seznamu eta
+-- obdelaj par razlicno dolgih seznamov, kjer je drugi seznam daljši od prvega (predpostavi da so seznami dolzin manjsih od
+-- drugega (daljsega) ze bili predhodno obdelani, in jih ni potrba ponovno)			
+obd_kraj_dalj_sez :: [Term] -> [Term] -> [Term] -> [Term]
+obd_kraj_dalj_sez _ [] [_] = []
+obd_kraj_dalj_sez l1 [] (y:ys) = obd_kraj_dalj_sez l1 l1 ys
+obd_kraj_dalj_sez l1 (x:xs) (y:ys) = Pair x y : obd_kraj_dalj_sez l1 xs (y:ys)
+
+-- obdelaj par razlicno dolgih seznamov, kjer je  prvi seznam daljši od drugega	(predpostavi da so seznami dolzin manjsih od
+-- prvega (daljsega) ze bili predhodno obdelani, in jih ni potrba ponovno)
+obd_dalj_kraj_sez :: [Term] -> [Term] -> [Term] -> [Term]
+obd_dalj_kraj_sez _ [_] [] = []
+obd_dalj_kraj_sez l2 (x:xs) [] = obd_dalj_kraj_sez l2 xs l2
+obd_dalj_kraj_sez l2 (x:xs) (y:ys) = Pair x y : obd_dalj_kraj_sez l2 (x:xs) ys
+																
+-- obdelaj par enako dolgih seznamov (predpostavi da so seznami dolzin manjsih od teh dveh ze bili predhodno obdelani, in jih ni
+-- potrebno ponovno)																 
+obd_enako_dolga_sez :: [Term] -> [Term] -> [Term]
+obd_enako_dolga_sez _ [] = []
+obd_enako_dolga_sez [x] (y:ys) = Pair x y : obd_enako_dolga_sez [x] ys
+obd_enako_dolga_sez (x:xs) ys = Pair x (last ys) : obd_enako_dolga_sez xs ys
+
+-- nova funkcija za prepletanje vsakega z vsakim
+pair_vsak_z_vsakim' :: [Term] -> [Term] -> [Term] -> [Term] -> [Term]
+pair_vsak_z_vsakim' [] [] _ _ = []
+pair_vsak_z_vsakim' [] ys a _ = obd_kraj_dalj_sez a a ys
+pair_vsak_z_vsakim' xs [] _ b = obd_dalj_kraj_sez b xs b
+pair_vsak_z_vsakim' (x:xs) (y:ys) a b = let l1 = a ++ [x]
+                                            l2 = b ++ [y]
+									    in
+										    obd_enako_dolga_sez l1 l2 ++ pair_vsak_z_vsakim' xs ys l1 l2
+
+-- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam elementov tipa (Basic x), spravljeno v
+-- asociativnem seznamu eta
 -- kličemo z eta = []
 gen :: [(Name,[Term])] -> Reg -> [Term]
 
-gen eta (Basic x) = fromJust $ lookup x eta
+gen eta (Basic x) = fromJust $ let k = lookup x eta
+							   in case k of
+								      Nothing -> error $ "Variable \"" ++ x ++ "\" not found"
+								      _ -> k
 
 gen _ Zero = []
 gen _ One = [Unit]
@@ -230,13 +271,99 @@ gen eta (Sum t1 t2) = let l1 = gen eta t1
 
 gen eta (Product t1 t2) = let l1 = gen eta t1
                               l2 = gen eta t2
-						  in pair_vsak_z_vsakim l1 l2
+						  in pair_vsak_z_vsakim' l1 l2 [] []
 
 gen eta (Fix x t) = s
     where s0 = map Con $ gen ((x,[]) : eta) t
           s = case s0 of
                   [] -> []
                   _ -> nub $ prepletemo s0 (map Con $ gen ((x,s) : eta) t)
-				   -- namesto ++ v prejsni vrtici uporabi "prepletemo"?
-				   -- pozor, prepletemo l1 l2 mora začeti z l1
+
 -- Primer praznega tipa: Fix "x" (Product (Basic "x") One)
+
+-- testi za gen
+{-
+take 10 $ gen [] (Fix "X" (Product (Basic "X") One))
+OUT: []
+
+take 10 $ gen [] (Product (Basic "X") One)
+OUT: *** Exception: Variable "X" not found
+
+take 10 $ gen [] (Product One Zero)
+OUT: []
+
+take 10 $ gen [] (Product One One)
+OUT: [Pair Unit Unit]
+
+*Zippers> take 10 $ gen [] (One)
+OUT: [Unit]
+
+take 10 $ gen [] (Fix "X" (Sum One One))
+OUT: [Con (Inl Unit),Con (Inr Unit)]
+
+take 10 $ gen [] (Fix "X" (Product One One))
+OUT: [Con (Pair Unit Unit)]
+
+take 10 $ gen [] (Fix "X" (Sum (Basic "X") One))
+OUT: [Con (Inr Unit),Con (Inl (Con (Inr Unit))),Con (Inl (Con (Inl (Con (Inr Unit))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))),Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))))))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))))))))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit))))))))))))))))),
+Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inl (Con (Inr Unit)))))))))))))))))))]
+
+take 10 $ gen [] (Fix "X" (Sum One (Basic "X")))
+OUT: [Con (Inl Unit),Con (Inr (Con (Inl Unit))),Con (Inr (Con (Inr (Con (Inl Unit))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))),Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))))))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit))))))))))))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inr (Con (Inl Unit)))))))))))))))))))]
+
+take 10 $ gen [] (Fix "X" (Sum (Sum One (Basic "X")) (Basic "X")))
+OUT: [Con (Inl (Inl Unit)),Con (Inr (Con (Inl (Inl Unit)))),Con (Inl (Inr (Con (Inl (Inl Unit))))),
+Con (Inr (Con (Inr (Con (Inl (Inl Unit)))))),Con (Inl (Inr (Con (Inr (Con (Inl (Inl Unit))))))),
+Con (Inr (Con (Inl (Inr (Con (Inl (Inl Unit))))))),Con (Inl (Inr (Con (Inl (Inr (Con (Inl (Inl Unit)))))))),
+Con (Inr (Con (Inr (Con (Inr (Con (Inl (Inl Unit)))))))),Con (Inl (Inr (Con (Inr (Con (Inr (Con (Inl (Inl Unit))))))))),
+Con (Inr (Con (Inl (Inr (Con (Inr (Con (Inl (Inl Unit)))))))))]
+
+take 10 $ gen [] (Fix "X" (Product (Basic "X") One))
+take 10 $ gen [] (Fix "X" (Product One (Basic "X")))
+OUT: []
+
+take 10 $ gen [] (Fix "X" (Sum Zero One))
+OUT: [Con (Inr Unit)]
+
+take 10 $ gen [] (Fix "X" (Sum (Product (Basic "X") One) One))
+OUT: [Con (Inr Unit),Con (Inl (Pair (Con (Inr Unit)) Unit))*** Exception: <<loop>> -> Potrebno nekako preprečiti neskoncno zanko 
+(te izjeme se ne da ujeti)
+
+take 10 $ gen [] (Fix "X" (Sum (Product One (Basic "X")) One))
+[Con (Inr Unit),Con (Inl (Pair Unit (Con (Inr Unit)))),Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit)))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit))))))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit)))))))))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit))))))))))))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit)))))))))))))))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit))))))))))))))))))))))))),
+Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inl (Pair Unit (Con (Inr Unit))))))))))))))))))))))))))))]
+
+take 10 $ gen [] (Fix "X" (Sum One Zero))
+OUT: [Con (Inl Unit)]
+
+take 10 $ gen [] (Fix "X" (Sum One (Product One (Basic "X"))))
+[Con (Inl Unit),Con (Inr (Pair Unit (Con (Inl Unit)))),Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit)))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit))))))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit)))))))))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit))))))))))))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit)))))))))))))))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit))))))))))))))))))))))))),
+Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inr (Pair Unit (Con (Inl Unit))))))))))))))))))))))))))))]
+
+take 10 $ gen [] (Fix "X" (Sum One (Product (Basic "X") One)))
+[Con (Inl Unit),Con (Inr (Pair (Con (Inl Unit)) Unit))*** Exception: <<loop>> -> Enaka izjema kot zgoraj
+-}
+
