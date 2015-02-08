@@ -1,4 +1,4 @@
-module Zippers
+module Auto
 	where
 
 -- IDEJE:
@@ -82,25 +82,6 @@ substitute x t1 t2 = case t1 of
 		where a = fresh ((names t2) ++ (names t))
 	Fix y t -> Fix y (substitute x t t2)
 
-simplify :: Reg -> Reg
-simplify t = case t of
-	Basic x -> Basic x
-	Zero -> Zero
-	One -> One
-	Sum t1 t2 -> case (simplify t1, simplify t2) of
-		(Zero, t2') -> t2' -- XXX podobno popravi ostale primere
-		(t1', Zero) -> t1'
-		(t1', t2') -> Sum t1' t2'
-	Product t1 t2 -> case (simplify t1, simplify t2) of
-		(Zero, _) -> Zero
-		(_, Zero) -> Zero
-		(One, t2') -> t2'
-		(t1', One) -> t1'
-		otherwise -> Product (simplify t1) (simplify t2)
-	Fix x t1 -> case simplify t1 of
-		t1' | elem x (names t1') -> Fix x t1'
-		t1' | otherwise -> t1'
-
 impossible :: Term -> Term
 impossible _ = error "This cannot happen"
 
@@ -152,11 +133,11 @@ simplify' t = case t of
 				case t' of
 					t1' | elem x (names t') -> (Fix x t1', h1, h2)
 						where
-							h1 (Con y) = Con (f y) --tuki bi mogoče še enkrat rabu kratko razlago kaj točno Con dela. Con zapakira???
+							h1 (Con y) = Con (f y) 
 							h2 (Con y) = Con (g y)
 					t1' | otherwise -> (t1', h1, h2)
 						where
-							h1 (Con y) = f y -- Nisem čist ziher če je to OK.
+							h1 (Con y) = f y
 							h2 y = Con (g y)
 
 -- Primeri:
@@ -182,29 +163,6 @@ list a = Fix "X" (Sum One (Product a (Basic "X")))
 -- T = fix (Y |-> 1 + [Y]) vstavimo list
 -- T = fix (Y |-> 1 + fix (X |-> 1 + Y * X))
 tree = Fix "Y" (Sum One (Fix "X" (Sum One (Product (Basic "Y") (Basic "X")))))
-
--- Pomožna funkcija, ki iz trojice rezultata simplify' vrne 1. element
-get_fst :: (Reg, Term -> Term, Term -> Term) -> Reg
-get_fst (x, _, _) = x
-
--- Funkcija za testiranje pravilnosti simplify'. Če pravilno poenostavlja tipe.
-test :: Reg -> Reg -> String
-test t1 t2 = let
-				t1' = get_fst (simplify' t1)
-			 in
-				if t1' == t2 then "OK" else "NI OK"
----------
---TESTI--
----------
-
--- test (Fix "X" (Sum (Zero) (Product (Basic "Y") (Basic "Z")))) (Product (Basic "Y") (Basic "Z"))
--- test (Sum Zero Zero) (Zero)
--- test (Product (Zero) (Basic "X")) (Zero)
--- test (Product One (Fix "X" (Sum (Basic "X") (Basic "Y")))) (Fix "X" (Sum (Basic "X") (Basic "Y")))
--- test (Fix "X" (Sum One (Fix "Z" (Product One (Basic "Y"))))) (Sum One (Basic "Y"))
-
--- Vsi teli zgoraj so OK!
-
 
 ----------------
 --FUNKCIJA GEN--
@@ -247,10 +205,11 @@ pair_vsak_z_vsakim' :: [Term] -> [Term] -> [Term] -> [Term] -> [Term]
 pair_vsak_z_vsakim' [] [] _ _ = []
 pair_vsak_z_vsakim' [] ys a _ = obd_kraj_dalj_sez a a ys
 pair_vsak_z_vsakim' xs [] _ b = obd_dalj_kraj_sez b xs b
-pair_vsak_z_vsakim' (x:xs) (y:ys) a b = let l1 = a ++ [x]
-                                            l2 = b ++ [y]
-									    in
-										    obd_enako_dolga_sez l1 l2 ++ pair_vsak_z_vsakim' xs ys l1 l2
+pair_vsak_z_vsakim' (x:xs) (y:ys) a b = let 
+											l1 = a ++ [x]
+											l2 = b ++ [y]
+										in
+											obd_enako_dolga_sez l1 l2 ++ pair_vsak_z_vsakim' xs ys l1 l2
 
 -- nastej vse elemente danega tipa, kjer imamo za vsako spremenljivko x dan seznam elementov tipa (Basic x), spravljeno v
 -- asociativnem seznamu eta
@@ -259,25 +218,92 @@ gen :: [(Name,[Term])] -> Reg -> [Term]
 
 gen eta (Basic x) = fromJust $ let k = lookup x eta
 							   in case k of
-								      Nothing -> error $ "Variable \"" ++ x ++ "\" not found"
-								      _ -> k
+									  Nothing -> error $ "Variable \"" ++ x ++ "\" not found"
+									  _ -> k
 
 gen _ Zero = []
 gen _ One = [Unit]
 
-gen eta (Sum t1 t2) = let l1 = gen eta t1
-                          l2 = gen eta t2
-					  in prepletemo (map Inl l1) (map Inr l2)
+gen eta (Sum t1 t2) = let 
+						l1 = gen eta t1
+						l2 = gen eta t2
+					  in
+					  	prepletemo (map Inl l1) (map Inr l2)
 
-gen eta (Product t1 t2) = let l1 = gen eta t1
-                              l2 = gen eta t2
-						  in pair_vsak_z_vsakim' l1 l2 [] []
+gen eta (Product t1 t2) = let
+							l1 = gen eta t1
+							l2 = gen eta t2
+						  in
+						  	pair_vsak_z_vsakim' l1 l2 [] []
 
 gen eta (Fix x t) = s
-    where s0 = map Con $ gen ((x,[]) : eta) t
-          s = case s0 of
-                  [] -> []
-                  _ -> nub $ prepletemo s0 (map Con $ gen ((x,s) : eta) t)
+	where
+		s0 = map Con $ gen ((x,[]) : eta) t
+		s = case s0 of
+			[] -> []
+			_ -> nub $ prepletemo s0 (map Con $ gen ((x,s) : eta) t)
+
+---------------------
+--TESTI ZA SIMPLIFY--
+---------------------
+
+-- Pomožna funkcija, ki iz trojice rezultata simplify' vrne 1. element
+get_fst :: (Reg, Term -> Term, Term -> Term) -> Reg
+get_fst (x, _, _) = x
+
+-- Pomožna funkcija, ki iz trojice rezultata simplify' vrne 2. element
+get_snd :: (Reg, Term -> Term, Term -> Term) -> (Term -> Term)
+get_snd (_, x, _) = x
+
+-- Pomožna funkcija, ki iz trojice rezultata simplify' vrne 3. element
+get_trd :: (Reg, Term -> Term, Term -> Term) -> (Term -> Term)
+get_trd (_, _, x) = x
+
+
+--Definirajmo nekaj tipov, ki se jih da poenostavit
+
+tipi = [(Sum (Zero) (Product (Basic "Y") (Basic "Z"))),			 	-- Sum v katerem je leva komponenta Zero
+		(Sum (Product (Basic "Y") (Basic "Z")) (Zero)),				-- Sum v katerem je desna komponenta Zero
+		(Product (Zero) (Basic "X")),								-- Product v katerem je leva komponenta Zero
+		(Product (Basic "X") (Zero)),								-- Product v katerem je desna komponenta Zero
+		(Product One (Fix "X" (Sum (Basic "X") (Basic "Y")))),		-- Product v katerem je leva komponenta One
+		(Product (Fix "X" (Sum (Basic "X") (Basic "Y"))) One),		-- Product v katerem je desna komponenta One
+		(Fix "X" (Sum One (Fix "Z" (Product One (Basic "Y"))))),	-- Fix brez vezane spremenljivke
+		(Fix "X" (Fix "Y" (Sum (Basic "X") (Basic "Y"))))]			-- Gnezden Fix
+
+poenostavitve = [(Product (Basic "Y") (Basic "Z")),
+				 (Product (Basic "Y") (Basic "Z")),
+				 (Zero),
+				 (Zero),
+				 (Fix "X" (Sum (Basic "X") (Basic "Y"))),
+				 (Fix "X" (Sum (Basic "X") (Basic "Y"))),
+				 (Sum One (Basic "Y")),
+				 (Fix "X" (Fix "Y" (Sum (Basic "X") (Basic "Y"))))]
+
+-- Preverimo če pravilno poenostavlja tipe.
+
+-- *Auto> (map (\x -> get_fst (simplify' x)) tipi) == poenostavitve
+-- True
+
+-- Preverimo če simplify' pravilno izračuna preslikave.
+
+-- najprej samo za enega
+poenostavljen = (Fix "X" (Sum One (Basic "X")))
+nepoenostavljen = (Fix "X" (Sum One (Product (Basic "X") (One))))
+
+-- gen je treba zrihtat ker se zaštrika...
+{-
+*Auto> (map (get_snd (simplify' nepoenostavljen)) (take 10 $ gen [] nepoenostavljen)) == (take 10 $ gen [] poenostavljen)
+*** Exception: <<loop>>
+
+-- dva še zna zgenerirat in za ta primer preslikave štimajo...
+*Auto> (map (get_snd (simplify' nepoenostavljen)) (take 2 $ gen [] nepoenostavljen)) == (take 2 $ gen [] poenostavljen)
+True
+
+*Auto> (map (get_trd (simplify' nepoenostavljen)) (take 2 $ gen [] poenostavljen)) == (take 2 $ gen [] nepoenostavljen)
+True
+-}
+
 
 -- Primer praznega tipa: Fix "x" (Product (Basic "x") One)
 
